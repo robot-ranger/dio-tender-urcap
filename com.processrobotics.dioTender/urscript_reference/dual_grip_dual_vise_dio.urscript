@@ -1,0 +1,215 @@
+###############################################################################
+# Dual gripper + dual vise, mill indexer, Modbus handshake (PolyScope 5)
+#
+# Part flow per tend (machine pulses m21):
+#   open door, enter with RAW in G1
+#   1. G2 grips OP1 part in vise1, open vise1, retreat
+#   2. G1 places RAW into vise1, close vise1, release      (G1 now empty)
+#   3. G1 grips FINISHED in vise2, open vise2, retreat
+#   4. G2 places OP1 part into vise2, close vise2, release (G2 now empty)
+#   exit, close door, pulse mfin -> place finished -> pick raw
+#
+# RESTART RULE (operator training):
+#   Both grippers must be empty at program start. If a tend was interrupted,
+#   jog clear, empty the grippers and leave the vises in ONE of these states:
+#     before tend: vise1 = op1,  vise2 = finished
+#     after tend:  vise1 = raw,  vise2 = op1
+#   then answer the start-up questions.
+#
+# SETUP (PolyScope):
+#   - Installation > Fieldbus > MODBUS: register signals named exactly as the
+#     SIG_* strings below. 0 = off/false, >0 = on/true.
+#     The m21 pulse must be longer than the Modbus update period of that signal.
+#   - Motion is STUBBED (textmsg only). Replace with taught waypoints and test
+#     in URSim first.
+###############################################################################
+
+# ---- Modbus signal names (must match Installation > Fieldbus > MODBUS) ----
+SIG_M21 = "m21"                # machine -> robot: tend request (pulse)
+SIG_MFIN = "mfin"              # robot -> machine: tend done (pulse)
+SIG_VISE1 = "openVise1"        # robot -> vise1: on = open, off = close
+SIG_VISE2 = "openVise2"        # robot -> vise2: on = open, off = close
+SIG_DOOR = "openDoor"          # robot -> door:  on = open, off = close
+SIG_DOOR_OPENED = "doorOpened" # door -> robot
+SIG_DOOR_CLOSED = "doorClosed" # door -> robot
+
+G1 = 0                 # tool digital out, HIGH = gripper closed
+G2 = 1
+GRIP_TIME = 0.5        # s, gripper settle
+VISE_TIME = 1.0        # s, vise settle (no vise feedback signals)
+MFIN_PULSE = 0.5       # s, mfin pulse width
+DOOR_TIMEOUT = 10.0    # s
+
+global tend_req = False
+
+def set_req(b):
+  global tend_req = b
+end
+
+def fail(msg):
+  popup(msg, "Machine tending", error = True, blocking = True)
+  halt
+end
+
+# ---- Modbus helpers: 0 = off, >0 = on ----
+def mb_on(sig):
+  return modbus_get_signal_status(sig, False) > 0
+end
+
+def mb_set(sig, on):
+  if on:
+    modbus_set_output_register(sig, 1, False)
+  else:
+    modbus_set_output_register(sig, 0, False)
+  end
+end
+
+def wait_mb(sig, timeout):
+  t = 0
+  while not mb_on(sig):
+    if t > timeout:
+      fail(str_cat("Timeout waiting for ", sig))
+    end
+    t = t + get_steptime()
+    sync()
+  end
+end
+
+# ---- m21 is a pulse: latch the rising edge so it's never missed ----
+thread m21_watch():
+  last = False
+  while True:
+    now = mb_on(SIG_M21)
+    if now and not last:
+      set_req(True)
+      textmsg("m21 latched")
+    end
+    last = now
+    sync()
+  end
+end
+
+# ---- devices ----
+def grip(g, close):
+  set_tool_digital_out(g, close)
+  sleep(GRIP_TIME)
+  # update payload here if needed
+end
+
+def vise(sig, open):
+  mb_set(sig, open)
+  sleep(VISE_TIME)
+end
+
+def door(open):
+  mb_set(SIG_DOOR, open)
+  if open:
+    wait_mb(SIG_DOOR_OPENED, DOOR_TIMEOUT)
+  else:
+    wait_mb(SIG_DOOR_CLOSED, DOOR_TIMEOUT)
+  end
+end
+
+def release_machine():
+  door(False)
+  mb_set(SIG_MFIN, True)
+  sleep(MFIN_PULSE)
+  mb_set(SIG_MFIN, False)
+end
+
+# ---- motion stubs: replace with taught waypoints ----
+def pick_raw():
+  textmsg("pick raw from infeed (G1)")       # approach, grip(G1, True), retreat
+  grip(G1, True)
+end
+
+def place_finished():
+  textmsg("place finished at outfeed (G1)")  # approach, grip(G1, False), retreat
+  grip(G1, False)
+end
+
+def tend_swap():
+  door(True)
+  textmsg("enter machine")
+  # 1. G2 takes op1 part out of vise1
+  textmsg("G2 -> vise1 part")
+  grip(G2, True)
+  vise(SIG_VISE1, True)
+  textmsg("G2 retreat from vise1")
+  # 2. G1 puts raw part into vise1
+  textmsg("G1 -> vise1 place")
+  vise(SIG_VISE1, False)
+  grip(G1, False)
+  textmsg("G1 retreat from vise1")
+  # 3. G1 takes finished part out of vise2
+  textmsg("G1 -> vise2 part")
+  grip(G1, True)
+  vise(SIG_VISE2, True)
+  textmsg("G1 retreat from vise2")
+  # 4. G2 puts op1 part into vise2
+  textmsg("G2 -> vise2 place")
+  vise(SIG_VISE2, False)
+  grip(G2, False)
+  textmsg("G2 retreat from vise2")
+  textmsg("exit machine (robot clear of door)")
+end
+
+def unload():
+  if tend_req = "unload":
+    door(True)
+    textmsg("enter machine")
+    # 1. G2 takes op1 part out of vise1
+    textmsg("G2 -> vise1 part")
+    grip(G2, True)
+    vise(SIG_VISE1, True)
+    textmsg("G2 retreat from vise1")
+    # 2. G1 puts raw part into vise1
+    textmsg("G1 -> vise1 place")
+    vise(SIG_VISE1, False)
+    grip(G1, False)
+    textmsg("G1 retreat from vise1")
+    tend_req = "load"
+
+def load():
+  if tend_req = "load":
+     # 3. G1 takes finished part out of vise2
+    textmsg("G1 -> vise2 part")
+    grip(G1, True)
+    vise(SIG_VISE2, True)
+    textmsg("G1 retreat from vise2")
+    # 4. G2 puts op1 part into vise2
+    textmsg("G2 -> vise2 place")
+    vise(SIG_VISE2, False)
+    grip(G2, False)
+    textmsg("G2 retreat from vise2")
+    textmsg("exit machine (robot clear of door)")
+    tend_req = ""
+
+# ---- before start ----
+if get_tool_digital_out(G1) or get_tool_digital_out(G2):
+  fail("Open both grippers and remove any parts before starting.")
+end
+
+# m21 is a pulse, so a machine already parked at M21 can't be seen. Ask.
+if request_boolean_from_primary_client("Is the machine stopped waiting at M21?"):
+  if request_boolean_from_primary_client("Vises already swapped (vise1 = raw, vise2 = op1)? YES: close door + send mfin. NO: robot does the tend."):
+    release_machine()
+  else:
+    set_req(True)
+  end
+end
+
+run m21_watch()
+
+# ---- cycle ----
+while True:
+  pick_raw()
+  while not tend_req:
+    sync()
+  end
+  set_req(False)
+  unload()
+  load()
+  release_machine()
+  place_finished()
+end
