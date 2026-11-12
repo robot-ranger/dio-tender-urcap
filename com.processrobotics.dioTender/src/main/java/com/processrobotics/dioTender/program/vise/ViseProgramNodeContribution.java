@@ -120,7 +120,7 @@ public class ViseProgramNodeContribution implements ProgramNodeContribution {
 	public void generateScript(ScriptWriter writer) {
 		DioTenderInstallationNodeContribution installation = getInstallation();
 		Signal signal = getSignal();
-		writer.appendLine(IoScript.write(installation.getSelection(signal), signal.getScriptVar(), isOpen()));
+		writer.appendLine(IoScript.write(installation.getSelection(signal), signal.getScriptVar(), isOpen(), installation.isInverted(signal)));
 		writer.appendLine("sleep(" + getDwell() + ")");
 	}
 

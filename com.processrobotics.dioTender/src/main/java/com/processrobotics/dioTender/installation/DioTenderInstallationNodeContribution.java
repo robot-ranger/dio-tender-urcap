@@ -1,5 +1,6 @@
 package com.processrobotics.dioTender.installation;
 
+import com.processrobotics.dioTender.program.IoScript;
 import com.ur.urcap.api.contribution.InstallationNodeContribution;
 import com.ur.urcap.api.contribution.installation.InstallationAPIProvider;
 import com.ur.urcap.api.domain.InstallationAPI;
@@ -132,6 +133,23 @@ public class DioTenderInstallationNodeContribution implements InstallationNodeCo
 		}
 	}
 
+	/** The signal's logic is inverted: outputs are written inverted, inputs are read inverted. */
+	public boolean isInverted(Signal signal) {
+		return model.get(invertKey(signal), false);
+	}
+
+	public void setInverted(Signal signal, boolean inverted) {
+		if (inverted) {
+			model.set(invertKey(signal), true);
+		} else {
+			model.remove(invertKey(signal));
+		}
+	}
+
+	private static String invertKey(Signal signal) {
+		return signal.getModelKey() + "_invert";
+	}
+
 	private static String sourceKey(Signal signal) {
 		return signal.getModelKey() + "_source";
 	}
@@ -179,9 +197,9 @@ public class DioTenderInstallationNodeContribution implements InstallationNodeCo
 		boolean first = true;
 		for (Signal signal : Signal.values()) {
 			IoOption io = getSelection(signal);
-			if (signal.isInput() && io.getSource().isDigital()) {
+			if (signal.isInput() && (io.getSource().isDigital() || isInverted(signal))) {
 				branch(writer, first, "sig == " + signal.getScriptVar());
-				writer.appendLine("return " + io.readExpression());
+				writer.appendLine("return " + IoScript.read(io, signal.getScriptVar(), isInverted(signal)));
 				first = false;
 			}
 		}
@@ -198,9 +216,18 @@ public class DioTenderInstallationNodeContribution implements InstallationNodeCo
 		first = true;
 		for (Signal signal : Signal.values()) {
 			IoOption io = getSelection(signal);
-			if (!signal.isInput() && io.getSource().isDigital()) {
+			if (!signal.isInput() && (io.getSource().isDigital() || isInverted(signal))) {
 				branch(writer, first, "sig == " + signal.getScriptVar());
-				writer.appendLine(io.writeStatement("on"));
+				if (io.getSource().isDigital()) {
+					writer.appendLine(io.writeStatement(isInverted(signal) ? "not on" : "on"));
+				} else {
+					// inverted Modbus output
+					writer.ifCondition("on");
+					writer.appendLine("modbus_set_output_register(sig, 0, False)");
+					writer.elseCondition();
+					writer.appendLine("modbus_set_output_register(sig, 1, False)");
+					writer.end();
+				}
 				first = false;
 			}
 		}

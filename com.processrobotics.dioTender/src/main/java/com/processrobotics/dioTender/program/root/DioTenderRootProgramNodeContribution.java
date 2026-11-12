@@ -43,8 +43,6 @@ public class DioTenderRootProgramNodeContribution implements ProgramNodeContribu
 					root.addChild(nf.createURCapProgramNode(WaitM21ProgramNodeService.class));
 					root.addChild(nf.createURCapProgramNode(TendSwapProgramNodeService.class));
 					root.addChild(nf.createURCapProgramNode(PlaceFinishedProgramNodeService.class));
-					// handshake order must not change
-					root.setChildSequenceLocked(true);
 				} catch (TreeStructureException e) {
 					e.printStackTrace();
 				}

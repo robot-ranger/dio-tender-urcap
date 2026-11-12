@@ -78,9 +78,9 @@ public class DoorProgramNodeContribution implements ProgramNodeContribution {
 		IoOption output = installation.getSelection(Signal.DOOR_OUTPUT);
 		IoOption input = installation.getSelection(feedback);
 
-		writer.appendLine(IoScript.write(output, Signal.DOOR_OUTPUT.getScriptVar(), open));
+		writer.appendLine(IoScript.write(output, Signal.DOOR_OUTPUT.getScriptVar(), open, installation.isInverted(Signal.DOOR_OUTPUT)));
 		writer.appendLine("dt_t = 0");
-		writer.whileNot(IoScript.read(input, feedback.getScriptVar()));
+		writer.whileNot(IoScript.read(input, feedback.getScriptVar(), installation.isInverted(feedback)));
 		writer.ifCondition("dt_t > DOOR_TIMEOUT");
 		writer.appendLine("fail(\"Timeout waiting for door " + (open ? "opened" : "closed") + "\")");
 		writer.end();

@@ -28,6 +28,7 @@ public class DioTenderInstallationNodeView implements SwingInstallationNodeView<
 
 	private final Style style;
 	private final Map<Signal, JComboBox<IoOption>> combos = new EnumMap<Signal, JComboBox<IoOption>>(Signal.class);
+	private final Map<Signal, JCheckBox> inverts = new EnumMap<Signal, JCheckBox>(Signal.class);
 	private final Map<Signal, JLabel> labels = new EnumMap<Signal, JLabel>(Signal.class);
 	private final Map<Signal, JLabel> warnings = new EnumMap<Signal, JLabel>(Signal.class);
 	private final JCheckBox enableCheckBox = new JCheckBox("Enable");
@@ -118,6 +119,19 @@ public class DioTenderInstallationNodeView implements SwingInstallationNodeView<
 		row.add(combo);
 		row.add(Style.createHorizontalSpacing());
 
+		final JCheckBox invert = new JCheckBox("Invert");
+		invert.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				if (!updating && contribution != null) {
+					contribution.setInverted(signal, invert.isSelected());
+				}
+			}
+		});
+		inverts.put(signal, invert);
+		row.add(invert);
+		row.add(Style.createHorizontalSpacing());
+
 		JLabel description = new JLabel(signal.getDescription());
 		row.add(description);
 		row.add(Style.createHorizontalSpacing());
@@ -161,6 +175,7 @@ public class DioTenderInstallationNodeView implements SwingInstallationNodeView<
 				for (IoOption option : options) {
 					combo.addItem(option);
 				}
+				inverts.get(signal).setSelected(installationNode.isInverted(signal));
 				JLabel warning = warnings.get(signal);
 				if (stored.getSource() == IoOption.Source.NONE || options.contains(stored)) {
 					warning.setText("");
