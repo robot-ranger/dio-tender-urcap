@@ -37,7 +37,7 @@ public class UnloadProgramNodeService implements SwingProgramNodeService<UnloadP
 		SystemAPI systemAPI = apiProvider.getSystemAPI();
 		Style style = systemAPI.getSoftwareVersion().getMajorVersion() >= 5 ? new V5Style() : new V3Style();
 		return new InfoProgramNodeView<UnloadProgramNodeContribution>(style,
-				"Unload part(s) from the vises. The door is already open.<br><br>Teach the moves as children of this node. Use vise(SIG_VISE1 / SIG_VISE2, True) in Script nodes to open a vise. When this node finishes, tend_req is set to \"load\".");
+				"Unload part(s) from the vises. Teach the moves as children of this node.");
 	}
 
 	@Override

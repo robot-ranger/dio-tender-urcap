@@ -37,7 +37,7 @@ public class LoadProgramNodeService implements SwingProgramNodeService<LoadProgr
 		SystemAPI systemAPI = apiProvider.getSystemAPI();
 		Style style = systemAPI.getSoftwareVersion().getMajorVersion() >= 5 ? new V5Style() : new V3Style();
 		return new InfoProgramNodeView<LoadProgramNodeContribution>(style,
-				"Load part(s) into the vises, then exit the machine.<br><br>Teach the moves as children of this node. Use vise(SIG_VISE1 / SIG_VISE2, False) in Script nodes to close a vise. The robot must be clear of the door when this node finishes: the door closes and MFin pulses next.");
+				"Load part(s) into the vises, then exit the machine.<br><br>Teach the moves as children of this node. The robot must be clear of the door when this node finishes: the door closes and Cycle Start pulses next.");
 	}
 
 	@Override

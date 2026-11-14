@@ -1,0 +1,44 @@
+site_name: DIO Tender
+site_description: Universal Robots URCap for DIO-based machine tending
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - URScript Manual: urscript-manual.md
+  - Codebase:
+      - Architecture: codebase/ARCHITECTURE.md
+      - Stack: codebase/STACK.md
+      - Structure: codebase/STRUCTURE.md
+      - Conventions: codebase/CONVENTIONS.md
+      - Integrations: codebase/INTEGRATIONS.md
+      - Testing: codebase/TESTING.md
+      - Concerns: codebase/CONCERNS.md
