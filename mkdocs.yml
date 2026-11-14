@@ -4,6 +4,7 @@ docs_dir: docs
 
 theme:
   name: material
+  favicon: images/process-robotics_icon.png
   features:
     - navigation.sections
     - navigation.top

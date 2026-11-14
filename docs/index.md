@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/process-robotics_transparent_bg_50px.png" alt="Process Robotics" height="50">
+  <img src="images/toolbar_logo.png" alt="Process Robotics" height="50">
 </p>
 
 # DIO Tender
