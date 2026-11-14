@@ -36,10 +36,47 @@ public class DioTenderInstallationNodeContribution implements InstallationNodeCo
 	@Override
 	public void openView() {
 		view.update(this);
+		view.startPolling();
 	}
 
 	@Override
 	public void closeView() {
+		view.stopPolling();
+	}
+
+	/**
+	 * Logical state of a signal ({@code physical != inverted}), or null if unknown: unmapped, not found in the
+	 * IOModel, or not resolvable. The IOModel is re-queried on every call so installation changes are picked up.
+	 */
+	Boolean readState(Signal signal) {
+		IoOption io = getSelection(signal);
+		Boolean physical = null;
+		if (io.getSource().isDigital()) {
+			for (DigitalIO dio : installationAPI.getIOModel().getIOs(DigitalIO.class)) {
+				if (dio.getDefaultName().equals(io.getId())) {
+					physical = dio.isResolvable() ? Boolean.valueOf(dio.getValue()) : null;
+					break;
+				}
+			}
+		} else if (io.getSource() == IoOption.Source.MODBUS) {
+			for (ModbusIO mio : installationAPI.getIOModel().getIOs(ModbusIO.class)) {
+				if (mio.getName().equals(io.getId())) {
+					physical = mio.isResolvable() ? Boolean.valueOf(mio.getValue() > 0) : null;
+					break;
+				}
+			}
+		}
+		if (physical == null) {
+			return null;
+		}
+		return physical.booleanValue() != isInverted(signal);
+	}
+
+	/** One-line incognito program that drives an output signal to the logical state {@code on}. */
+	String buildCommand(Signal signal, boolean on) {
+		IoOption io = getSelection(signal);
+		String scriptVar = "\"" + io.getId().replace("\"", "") + "\"";
+		return "def inkognito():\n  " + IoScript.write(io, scriptVar, on, isInverted(signal)) + "\nend\n";
 	}
 
 	/** Enabled and all seven signals mapped: the DIO Tender program can run against this installation. */

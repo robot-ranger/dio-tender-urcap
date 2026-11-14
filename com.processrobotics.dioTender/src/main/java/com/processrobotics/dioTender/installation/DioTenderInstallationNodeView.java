@@ -7,19 +7,28 @@ import com.ur.urcap.api.contribution.installation.swing.SwingInstallationNodeVie
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultListCellRenderer;
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
+import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.util.EnumMap;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 public class DioTenderInstallationNodeView implements SwingInstallationNodeView<DioTenderInstallationNodeContribution> {
 
@@ -31,6 +40,23 @@ public class DioTenderInstallationNodeView implements SwingInstallationNodeView<
 	private final Map<Signal, JCheckBox> inverts = new EnumMap<Signal, JCheckBox>(Signal.class);
 	private final Map<Signal, JLabel> labels = new EnumMap<Signal, JLabel>(Signal.class);
 	private final Map<Signal, JLabel> warnings = new EnumMap<Signal, JLabel>(Signal.class);
+	private static final int POLL_MS = 250;
+	private static final int DASHBOARD_EVERY_N_TICKS = 4;
+	private static final Dimension INDICATOR_SIZE = new Dimension(40, 24);
+	private static final Dimension BUTTON_SIZE = new Dimension(90, ROW_HEIGHT);
+	private static final String LOCKED_TEXT = "Program running: outputs locked";
+
+	private final Map<Signal, JLabel> indicators = new EnumMap<Signal, JLabel>(Signal.class);
+	private final Map<Signal, JButton> onButtons = new EnumMap<Signal, JButton>(Signal.class);
+	private final Map<Signal, JButton> offButtons = new EnumMap<Signal, JButton>(Signal.class);
+	private final JLabel status = new JLabel(" ");
+	private Timer pollTimer;
+	private ExecutorService executor;
+	// null = unknown (treated as running / locked). Only touched on the EDT.
+	private Boolean programRunning = null;
+	private boolean sending = false;
+	private boolean dashboardCheckPending = false;
+	private int tick = 0;
 	private final JCheckBox enableCheckBox = new JCheckBox("Enable");
 	private DioTenderInstallationNodeContribution contribution;
 	// guards against combo listeners writing to the model while combos are repopulated
@@ -68,16 +94,33 @@ public class DioTenderInstallationNodeView implements SwingInstallationNodeView<
 		jPanel.add(info);
 		jPanel.add(Style.createVerticalSpacing(Style.VERTICAL_SPACING * 2));
 
-		for (Signal signal : Signal.values()) {
-			jPanel.add(createSignalRow(signal));
-			jPanel.add(Style.createVerticalSpacing());
-		}
+		addSection(jPanel, "Inputs (machine / door \u2192 robot)", true);
+		jPanel.add(Style.createVerticalSpacing(Style.VERTICAL_SPACING));
+		addSection(jPanel, "Outputs (robot \u2192 machine / vise / door)", false);
+		status.setAlignmentX(Component.LEFT_ALIGNMENT);
+		status.setForeground(Style.GRAY_1);
+		jPanel.add(status);
 		sizeLabelsToWidest();
 
 		jPanel.add(Box.createVerticalGlue());
 		Box logo = LogoRow.create(75);
 		logo.setAlignmentX(Component.LEFT_ALIGNMENT);
 		jPanel.add(logo);
+	}
+
+	/** Adds a bold category header followed by the rows of every signal with the given direction. */
+	private void addSection(JPanel jPanel, String title, boolean inputs) {
+		JLabel header = new JLabel(title);
+		header.setFont(header.getFont().deriveFont(Font.BOLD));
+		header.setAlignmentX(Component.LEFT_ALIGNMENT);
+		jPanel.add(header);
+		jPanel.add(Style.createVerticalSpacing());
+		for (Signal signal : Signal.values()) {
+			if (signal.isInput() == inputs) {
+				jPanel.add(createSignalRow(signal));
+				jPanel.add(Style.createVerticalSpacing());
+			}
+		}
 	}
 
 	private Box createSignalRow(final Signal signal) {
@@ -132,8 +175,25 @@ public class DioTenderInstallationNodeView implements SwingInstallationNodeView<
 		row.add(invert);
 		row.add(Style.createHorizontalSpacing());
 
-		JLabel description = new JLabel(signal.getDescription());
-		row.add(description);
+		if (signal.isInput()) {
+			JLabel indicator = new JLabel("\u2013", SwingConstants.CENTER);
+			indicator.setOpaque(true);
+			indicator.setBorder(BorderFactory.createLineBorder(Style.GRAY_4, Style.BORDER_THIN));
+			indicator.setPreferredSize(INDICATOR_SIZE);
+			indicator.setMinimumSize(INDICATOR_SIZE);
+			indicator.setMaximumSize(INDICATOR_SIZE);
+			indicators.put(signal, indicator);
+			row.add(indicator);
+		} else {
+			boolean pulse = signal == Signal.MFIN;
+			JButton on = createOutputButton(signal, pulse ? "ON" : "OPEN", true);
+			JButton off = createOutputButton(signal, pulse ? "OFF" : "CLOSE", false);
+			onButtons.put(signal, on);
+			offButtons.put(signal, off);
+			row.add(on);
+			row.add(Style.createHorizontalSpacing());
+			row.add(off);
+		}
 		row.add(Style.createHorizontalSpacing());
 
 		JLabel warning = new JLabel("");
@@ -143,6 +203,175 @@ public class DioTenderInstallationNodeView implements SwingInstallationNodeView<
 
 		row.add(Box.createHorizontalGlue());
 		return row;
+	}
+
+	private JButton createOutputButton(final Signal signal, String text, final boolean on) {
+		JButton button = new JButton(text);
+		button.setPreferredSize(BUTTON_SIZE);
+		button.setMinimumSize(BUTTON_SIZE);
+		button.setMaximumSize(BUTTON_SIZE);
+		button.setOpaque(true);
+		button.setEnabled(false);
+		button.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				onOutputClicked(signal, on);
+			}
+		});
+		return button;
+	}
+
+	/** Starts the 250 ms poll that refreshes indicators / highlights / enabled state. Call on the EDT. */
+	void startPolling() {
+		if (executor == null) {
+			executor = Executors.newSingleThreadExecutor(new ThreadFactory() {
+				@Override
+				public Thread newThread(Runnable r) {
+					Thread t = new Thread(r, "dio-tender-controller");
+					t.setDaemon(true);
+					return t;
+				}
+			});
+		}
+		if (pollTimer == null) {
+			pollTimer = new Timer(POLL_MS, new ActionListener() {
+				@Override
+				public void actionPerformed(ActionEvent e) {
+					onTick();
+				}
+			});
+		}
+		tick = 0;
+		programRunning = null; // unknown until the first Dashboard answer
+		pollTimer.start();
+		onTick();
+	}
+
+	void stopPolling() {
+		if (pollTimer != null) {
+			pollTimer.stop();
+		}
+	}
+
+	private void onTick() {
+		if (contribution == null) {
+			return;
+		}
+		if (tick++ % DASHBOARD_EVERY_N_TICKS == 0 && !dashboardCheckPending && executor != null) {
+			dashboardCheckPending = true;
+			executor.submit(new Runnable() {
+				@Override
+				public void run() {
+					Boolean running;
+					try {
+						running = Boolean.valueOf(ControllerClient.isProgramRunning());
+					} catch (IOException ex) {
+						running = null; // fail closed
+					}
+					final Boolean result = running;
+					SwingUtilities.invokeLater(new Runnable() {
+						@Override
+						public void run() {
+							programRunning = result;
+							dashboardCheckPending = false;
+						}
+					});
+				}
+			});
+		}
+		boolean unlocked = Boolean.FALSE.equals(programRunning);
+		for (Signal signal : Signal.values()) {
+			Boolean state = contribution.readState(signal);
+			if (signal.isInput()) {
+				showIndicator(indicators.get(signal), state);
+			} else {
+				JButton on = onButtons.get(signal);
+				JButton off = offButtons.get(signal);
+				highlight(on, state != null && state);
+				highlight(off, state != null && !state);
+				boolean enabled = state != null && unlocked && !sending;
+				on.setEnabled(enabled);
+				off.setEnabled(enabled);
+			}
+		}
+		if (programRunning == null) {
+			if (status.getForeground() != Style.RED) {
+				status.setForeground(Style.GRAY_1);
+				status.setText("Controller state unknown: outputs locked");
+			}
+		} else if (programRunning) {
+			status.setForeground(Style.GRAY_1);
+			status.setText(LOCKED_TEXT);
+		} else if (status.getForeground() != Style.RED) {
+			status.setText(" ");
+		}
+	}
+
+	private static void showIndicator(JLabel indicator, Boolean state) {
+		if (state == null) {
+			indicator.setBackground(Style.LIGHT_GRAY_3);
+			indicator.setForeground(Style.BLACK);
+			indicator.setText("\u2013");
+		} else if (state) {
+			indicator.setBackground(Style.GREEN);
+			indicator.setForeground(Style.WHITE);
+			indicator.setText("ON");
+		} else {
+			indicator.setBackground(Style.LIGHT_GRAY_1);
+			indicator.setForeground(Style.BLACK);
+			indicator.setText("OFF");
+		}
+	}
+
+	private static void highlight(JButton button, boolean active) {
+		if (active) {
+			button.setBackground(Style.UR_BLUE);
+			button.setForeground(Style.WHITE);
+		} else {
+			button.setBackground(null);
+			button.setForeground(null);
+		}
+	}
+
+	private void onOutputClicked(final Signal signal, final boolean on) {
+		if (sending || executor == null || contribution == null) {
+			return;
+		}
+		sending = true;
+		status.setForeground(Style.GRAY_1);
+		status.setText(" ");
+		for (Signal s : onButtons.keySet()) {
+			onButtons.get(s).setEnabled(false);
+			offButtons.get(s).setEnabled(false);
+		}
+		final String command = contribution.buildCommand(signal, on);
+		executor.submit(new Runnable() {
+			@Override
+			public void run() {
+				String error = null;
+				try {
+					// time-of-check guard: a program may have started since the last poll
+					if (ControllerClient.isProgramRunning()) {
+						error = LOCKED_TEXT;
+					} else {
+						ControllerClient.sendPrimary(command);
+					}
+				} catch (IOException ex) {
+					error = "Could not reach controller: " + ex.getMessage();
+				}
+				final String message = error;
+				SwingUtilities.invokeLater(new Runnable() {
+					@Override
+					public void run() {
+						sending = false;
+						if (message != null) {
+							status.setForeground(LOCKED_TEXT.equals(message) ? Style.GRAY_1 : Style.RED);
+							status.setText(message);
+						}
+					}
+				});
+			}
+		});
 	}
 
 	/** Give every signal label the width of the widest one so none are clipped and the combos line up. */
