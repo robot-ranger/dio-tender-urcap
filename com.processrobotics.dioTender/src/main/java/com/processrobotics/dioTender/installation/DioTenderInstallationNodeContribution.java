@@ -6,6 +6,7 @@ import com.ur.urcap.api.contribution.installation.InstallationAPIProvider;
 import com.ur.urcap.api.domain.InstallationAPI;
 import com.ur.urcap.api.domain.data.DataModel;
 import com.ur.urcap.api.domain.io.DigitalIO;
+import com.ur.urcap.api.domain.io.IO;
 import com.ur.urcap.api.domain.io.ModbusIO;
 import com.ur.urcap.api.domain.script.ScriptWriter;
 
@@ -44,39 +45,54 @@ public class DioTenderInstallationNodeContribution implements InstallationNodeCo
 		view.stopPolling();
 	}
 
-	/**
-	 * Logical state of a signal ({@code physical != inverted}), or null if unknown: unmapped, not found in the
-	 * IOModel, or not resolvable. The IOModel is re-queried on every call so installation changes are picked up.
-	 */
-	Boolean readState(Signal signal) {
-		IoOption io = getSelection(signal);
-		Boolean physical = null;
-		if (io.getSource().isDigital()) {
+	/** The live IO for a mapped signal, or null if unmapped, not in the IOModel, or not resolvable. Re-queried on every call. */
+	private IO findIo(Signal signal) {
+		IoOption sel = getSelection(signal);
+		IO found = null;
+		if (sel.getSource().isDigital()) {
 			for (DigitalIO dio : installationAPI.getIOModel().getIOs(DigitalIO.class)) {
-				if (dio.getDefaultName().equals(io.getId())) {
-					physical = dio.isResolvable() ? Boolean.valueOf(dio.getValue()) : null;
+				if (dio.getDefaultName().equals(sel.getId())) {
+					found = dio;
 					break;
 				}
 			}
-		} else if (io.getSource() == IoOption.Source.MODBUS) {
+		} else if (sel.getSource() == IoOption.Source.MODBUS) {
 			for (ModbusIO mio : installationAPI.getIOModel().getIOs(ModbusIO.class)) {
-				if (mio.getName().equals(io.getId())) {
-					physical = mio.isResolvable() ? Boolean.valueOf(mio.getValue() > 0) : null;
+				if (mio.getName().equals(sel.getId())) {
+					found = mio;
 					break;
 				}
 			}
 		}
-		if (physical == null) {
-			return null;
-		}
-		return physical.booleanValue() != isInverted(signal);
+		return found != null && found.isResolvable() ? found : null;
 	}
 
-	/** One-line incognito program that drives an output signal to the logical state {@code on}. */
-	String buildCommand(Signal signal, boolean on) {
-		IoOption io = getSelection(signal);
-		String scriptVar = "\"" + io.getId().replace("\"", "") + "\"";
-		return "def inkognito():\n  " + IoScript.write(io, scriptVar, on, isInverted(signal)) + "\nend\n";
+	/** Logical state of a signal ({@code physical != inverted}), or null if unknown (unmapped, missing, unresolvable). */
+	Boolean readState(Signal signal) {
+		IO io = findIo(signal);
+		Boolean physical = null;
+		if (io instanceof DigitalIO) {
+			physical = Boolean.valueOf(((DigitalIO) io).getValue());
+		} else if (io instanceof ModbusIO) {
+			physical = Boolean.valueOf(((ModbusIO) io).getValue() > 0);
+		}
+		return physical == null ? null : physical.booleanValue() != isInverted(signal);
+	}
+
+	/** Drives an output to logical state {@code on} (inversion applied). false if unmapped/unresolvable or the controller refused. */
+	boolean setOutput(Signal signal, boolean on) {
+		IO io = findIo(signal);
+		if (io == null || io.isInput()) {
+			return false;
+		}
+		boolean physical = on != isInverted(signal);
+		if (io instanceof DigitalIO) {
+			return ((DigitalIO) io).setValue(physical);
+		}
+		if (io instanceof ModbusIO) {
+			return ((ModbusIO) io).setValue(physical ? 1 : 0);
+		}
+		return false;
 	}
 
 	/** Enabled and all seven signals mapped: the DIO Tender program can run against this installation. */

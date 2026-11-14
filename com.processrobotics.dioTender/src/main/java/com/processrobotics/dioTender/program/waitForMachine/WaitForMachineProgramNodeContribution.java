@@ -1,4 +1,4 @@
-package com.processrobotics.dioTender.program.waitM21;
+package com.processrobotics.dioTender.program.waitForMachine;
 
 import com.ur.urcap.api.contribution.ProgramNodeContribution;
 import com.ur.urcap.api.contribution.program.CreationContext;
@@ -7,11 +7,11 @@ import com.ur.urcap.api.domain.data.DataModel;
 import com.ur.urcap.api.domain.script.ScriptWriter;
 
 /** Blocks until m21_watch latches a tend request, so PolyScope highlights this node while the robot waits. */
-public class WaitM21ProgramNodeContribution implements ProgramNodeContribution {
+public class WaitForMachineProgramNodeContribution implements ProgramNodeContribution {
 
 	private final DataModel model;
 
-	public WaitM21ProgramNodeContribution(ProgramAPIProvider apiProvider, DataModel model, CreationContext context) {
+	public WaitForMachineProgramNodeContribution(ProgramAPIProvider apiProvider, DataModel model, CreationContext context) {
 		this.model = model;
 	}
 

@@ -4,7 +4,7 @@ import com.processrobotics.dioTender.installation.DioTenderInstallationNodeContr
 import com.processrobotics.dioTender.program.pickRaw.PickRawProgramNodeService;
 import com.processrobotics.dioTender.program.placeFinished.PlaceFinishedProgramNodeService;
 import com.processrobotics.dioTender.program.tendSwap.TendSwapProgramNodeService;
-import com.processrobotics.dioTender.program.waitM21.WaitM21ProgramNodeService;
+import com.processrobotics.dioTender.program.waitForMachine.WaitForMachineProgramNodeService;
 import com.ur.urcap.api.contribution.ProgramNodeContribution;
 import com.ur.urcap.api.contribution.program.CreationContext;
 import com.ur.urcap.api.contribution.program.CreationContext.NodeCreationType;
@@ -40,7 +40,7 @@ public class DioTenderRootProgramNodeContribution implements ProgramNodeContribu
 			public void executeChanges() {
 				try {
 					root.addChild(nf.createURCapProgramNode(PickRawProgramNodeService.class));
-					root.addChild(nf.createURCapProgramNode(WaitM21ProgramNodeService.class));
+					root.addChild(nf.createURCapProgramNode(WaitForMachineProgramNodeService.class));
 					root.addChild(nf.createURCapProgramNode(TendSwapProgramNodeService.class));
 					root.addChild(nf.createURCapProgramNode(PlaceFinishedProgramNodeService.class));
 				} catch (TreeStructureException e) {

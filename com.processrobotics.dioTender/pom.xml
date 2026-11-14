@@ -12,6 +12,7 @@
 	<packaging>bundle</packaging>
 
 	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
 		<!--********************************************************************-->
 		<!--   Note: Update this section with relevant meta data                -->
@@ -20,7 +21,7 @@
 		<!--******************* BEGINNING OF URCAP META DATA *******************-->
 		<urcap.symbolicname>com.processrobotics.dioTender</urcap.symbolicname>
 		<urcap.vendor>Process Robotics</urcap.vendor>
-		<urcap.contactAddress>123 URCap Street</urcap.contactAddress>
+		<urcap.contactAddress>Portland, OR</urcap.contactAddress>
 		<urcap.copyright>Copyright notice (C)</urcap.copyright>
 		<urcap.description>Dual-gripper dual-vise machine tender over Modbus</urcap.description>
 		<urcap.licenseType>License type</urcap.licenseType>

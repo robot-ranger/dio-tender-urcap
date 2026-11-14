@@ -1,4 +1,4 @@
-package com.processrobotics.dioTender.program.waitM21;
+package com.processrobotics.dioTender.program.waitForMachine;
 
 import com.processrobotics.dioTender.program.InfoProgramNodeView;
 import com.processrobotics.dioTender.style.Style;
@@ -14,11 +14,11 @@ import com.ur.urcap.api.domain.data.DataModel;
 
 import java.util.Locale;
 
-public class WaitM21ProgramNodeService implements SwingProgramNodeService<WaitM21ProgramNodeContribution, InfoProgramNodeView<WaitM21ProgramNodeContribution>> {
+public class WaitForMachineProgramNodeService implements SwingProgramNodeService<WaitForMachineProgramNodeContribution, InfoProgramNodeView<WaitForMachineProgramNodeContribution>> {
 
 	@Override
 	public String getId() {
-		return "DioTenderWaitM21";
+		return "DioTenderWaitForMachine";
 	}
 
 	@Override
@@ -29,20 +29,20 @@ public class WaitM21ProgramNodeService implements SwingProgramNodeService<WaitM2
 
 	@Override
 	public String getTitle(Locale locale) {
-		return "Wait for M21";
+		return "Wait for Machine";
 	}
 
 	@Override
-	public InfoProgramNodeView<WaitM21ProgramNodeContribution> createView(ViewAPIProvider apiProvider) {
+	public InfoProgramNodeView<WaitForMachineProgramNodeContribution> createView(ViewAPIProvider apiProvider) {
 		SystemAPI systemAPI = apiProvider.getSystemAPI();
 		Style style = systemAPI.getSoftwareVersion().getMajorVersion() >= 5 ? new V5Style() : new V3Style();
-		return new InfoProgramNodeView<WaitM21ProgramNodeContribution>(style,
+		return new InfoProgramNodeView<WaitForMachineProgramNodeContribution>(style,
 				"Waits here until the machine requests a tend (M21 pulse, latched by the m21_watch thread).<br><br>The robot is holding a RAW part in G1 and is outside the machine.");
 	}
 
 	@Override
-	public WaitM21ProgramNodeContribution createNode(ProgramAPIProvider apiProvider,
-			InfoProgramNodeView<WaitM21ProgramNodeContribution> view, DataModel model, CreationContext context) {
-		return new WaitM21ProgramNodeContribution(apiProvider, model, context);
+	public WaitForMachineProgramNodeContribution createNode(ProgramAPIProvider apiProvider,
+			InfoProgramNodeView<WaitForMachineProgramNodeContribution> view, DataModel model, CreationContext context) {
+		return new WaitForMachineProgramNodeContribution(apiProvider, model, context);
 	}
 }

@@ -6,8 +6,8 @@ package com.processrobotics.dioTender.installation;
  * installation DataModel under {@link #getModelKey()} and written to script as {@link #getScriptVar()}.
  */
 public enum Signal {
-	M21("m21", "M21", true, "SIG_M21"),
-	MFIN("mfin", "MFin", false, "SIG_MFIN"),
+	M21("cycleComplete", "Cycle Complete", true, "SIG_M21"),
+	MFIN("cycleStart", "Cycle Start", false, "SIG_MFIN"),
 	VISE1("vise1", "Vise 1", false, "SIG_VISE1"),
 	VISE2("vise2", "Vise 2", false, "SIG_VISE2"),
 	DOOR_OUTPUT("doorOutput", "Door Output", false, "SIG_DOOR"),

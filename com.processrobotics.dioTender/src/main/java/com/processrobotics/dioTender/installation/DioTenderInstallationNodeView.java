@@ -15,7 +15,6 @@ import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
-import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import java.awt.Component;
 import java.awt.Dimension;
@@ -23,12 +22,8 @@ import java.awt.Font;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.util.EnumMap;
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 
 public class DioTenderInstallationNodeView implements SwingInstallationNodeView<DioTenderInstallationNodeContribution> {
 
@@ -41,22 +36,17 @@ public class DioTenderInstallationNodeView implements SwingInstallationNodeView<
 	private final Map<Signal, JLabel> labels = new EnumMap<Signal, JLabel>(Signal.class);
 	private final Map<Signal, JLabel> warnings = new EnumMap<Signal, JLabel>(Signal.class);
 	private static final int POLL_MS = 250;
-	private static final int DASHBOARD_EVERY_N_TICKS = 4;
 	private static final Dimension INDICATOR_SIZE = new Dimension(40, 24);
-	private static final Dimension BUTTON_SIZE = new Dimension(90, ROW_HEIGHT);
-	private static final String LOCKED_TEXT = "Program running: outputs locked";
+	private static final Dimension BUTTON_SIZE = new Dimension(120, ROW_HEIGHT);
+	private static final String OUTPUT_TOOLTIP = "Sets the output immediately, also while a program is running.";
 
 	private final Map<Signal, JLabel> indicators = new EnumMap<Signal, JLabel>(Signal.class);
 	private final Map<Signal, JButton> onButtons = new EnumMap<Signal, JButton>(Signal.class);
 	private final Map<Signal, JButton> offButtons = new EnumMap<Signal, JButton>(Signal.class);
 	private final JLabel status = new JLabel(" ");
 	private Timer pollTimer;
-	private ExecutorService executor;
-	// null = unknown (treated as running / locked). Only touched on the EDT.
-	private Boolean programRunning = null;
-	private boolean sending = false;
-	private boolean dashboardCheckPending = false;
-	private int tick = 0;
+	// last failed output write, shown in red until the next successful click
+	private String lastError = null;
 	private final JCheckBox enableCheckBox = new JCheckBox("Enable");
 	private DioTenderInstallationNodeContribution contribution;
 	// guards against combo listeners writing to the model while combos are repopulated
@@ -207,11 +197,15 @@ public class DioTenderInstallationNodeView implements SwingInstallationNodeView<
 
 	private JButton createOutputButton(final Signal signal, String text, final boolean on) {
 		JButton button = new JButton(text);
-		button.setPreferredSize(BUTTON_SIZE);
-		button.setMinimumSize(BUTTON_SIZE);
-		button.setMaximumSize(BUTTON_SIZE);
+		// never narrower than the text needs: the PolyScope L&F adds large insets that clipped "CLOSE" to "CL..."
+		Dimension size = new Dimension(Math.max(BUTTON_SIZE.width, button.getPreferredSize().width + Style.HORIZONTAL_SPACING),
+				BUTTON_SIZE.height);
+		button.setPreferredSize(size);
+		button.setMinimumSize(size);
+		button.setMaximumSize(size);
 		button.setOpaque(true);
 		button.setEnabled(false);
+		button.setToolTipText(OUTPUT_TOOLTIP);
 		button.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
@@ -223,16 +217,6 @@ public class DioTenderInstallationNodeView implements SwingInstallationNodeView<
 
 	/** Starts the 250 ms poll that refreshes indicators / highlights / enabled state. Call on the EDT. */
 	void startPolling() {
-		if (executor == null) {
-			executor = Executors.newSingleThreadExecutor(new ThreadFactory() {
-				@Override
-				public Thread newThread(Runnable r) {
-					Thread t = new Thread(r, "dio-tender-controller");
-					t.setDaemon(true);
-					return t;
-				}
-			});
-		}
 		if (pollTimer == null) {
 			pollTimer = new Timer(POLL_MS, new ActionListener() {
 				@Override
@@ -241,8 +225,6 @@ public class DioTenderInstallationNodeView implements SwingInstallationNodeView<
 				}
 			});
 		}
-		tick = 0;
-		programRunning = null; // unknown until the first Dashboard answer
 		pollTimer.start();
 		onTick();
 	}
@@ -257,29 +239,6 @@ public class DioTenderInstallationNodeView implements SwingInstallationNodeView<
 		if (contribution == null) {
 			return;
 		}
-		if (tick++ % DASHBOARD_EVERY_N_TICKS == 0 && !dashboardCheckPending && executor != null) {
-			dashboardCheckPending = true;
-			executor.submit(new Runnable() {
-				@Override
-				public void run() {
-					Boolean running;
-					try {
-						running = Boolean.valueOf(ControllerClient.isProgramRunning());
-					} catch (IOException ex) {
-						running = null; // fail closed
-					}
-					final Boolean result = running;
-					SwingUtilities.invokeLater(new Runnable() {
-						@Override
-						public void run() {
-							programRunning = result;
-							dashboardCheckPending = false;
-						}
-					});
-				}
-			});
-		}
-		boolean unlocked = Boolean.FALSE.equals(programRunning);
 		for (Signal signal : Signal.values()) {
 			Boolean state = contribution.readState(signal);
 			if (signal.isInput()) {
@@ -289,21 +248,9 @@ public class DioTenderInstallationNodeView implements SwingInstallationNodeView<
 				JButton off = offButtons.get(signal);
 				highlight(on, state != null && state);
 				highlight(off, state != null && !state);
-				boolean enabled = state != null && unlocked && !sending;
-				on.setEnabled(enabled);
-				off.setEnabled(enabled);
+				on.setEnabled(state != null);
+				off.setEnabled(state != null);
 			}
-		}
-		if (programRunning == null) {
-			if (status.getForeground() != Style.RED) {
-				status.setForeground(Style.GRAY_1);
-				status.setText("Controller state unknown: outputs locked");
-			}
-		} else if (programRunning) {
-			status.setForeground(Style.GRAY_1);
-			status.setText(LOCKED_TEXT);
-		} else if (status.getForeground() != Style.RED) {
-			status.setText(" ");
 		}
 	}
 
@@ -333,45 +280,25 @@ public class DioTenderInstallationNodeView implements SwingInstallationNodeView<
 		}
 	}
 
-	private void onOutputClicked(final Signal signal, final boolean on) {
-		if (sending || executor == null || contribution == null) {
+	private void onOutputClicked(Signal signal, boolean on) {
+		if (contribution == null) {
 			return;
 		}
-		sending = true;
-		status.setForeground(Style.GRAY_1);
-		status.setText(" ");
-		for (Signal s : onButtons.keySet()) {
-			onButtons.get(s).setEnabled(false);
-			offButtons.get(s).setEnabled(false);
+		if (contribution.setOutput(signal, on)) {
+			lastError = null;
+		} else {
+			lastError = signal.getLabel() + ": output not set (unmapped, unavailable, or controller not running)";
 		}
-		final String command = contribution.buildCommand(signal, on);
-		executor.submit(new Runnable() {
-			@Override
-			public void run() {
-				String error = null;
-				try {
-					// time-of-check guard: a program may have started since the last poll
-					if (ControllerClient.isProgramRunning()) {
-						error = LOCKED_TEXT;
-					} else {
-						ControllerClient.sendPrimary(command);
-					}
-				} catch (IOException ex) {
-					error = "Could not reach controller: " + ex.getMessage();
-				}
-				final String message = error;
-				SwingUtilities.invokeLater(new Runnable() {
-					@Override
-					public void run() {
-						sending = false;
-						if (message != null) {
-							status.setForeground(LOCKED_TEXT.equals(message) ? Style.GRAY_1 : Style.RED);
-							status.setText(message);
-						}
-					}
-				});
-			}
-		});
+		refreshStatus();
+	}
+
+	private void refreshStatus() {
+		if (lastError == null) {
+			status.setText(" ");
+		} else {
+			status.setForeground(Style.RED);
+			status.setText(lastError);
+		}
 	}
 
 	/** Give every signal label the width of the widest one so none are clipped and the combos line up. */
