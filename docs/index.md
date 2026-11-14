@@ -8,6 +8,31 @@ A URCap for Universal Robots e-Series that gives you a ready-made program skelet
 
 ![DIO Tender program tree in PolyScope](images/program_diotender_root.png)
 
+DIO Tender is developed and owned by [Process Robotics](https://processrobotics.com) and is part of the [MXInterface](https://mxinterface.com) ecosystem.
+
+## Start here, scale with MXInterface
+
+DIO Tender is the quickest way to put a Universal Robots cobot to work on a machine: map your signals, teach your moves and run. It is the on-ramp to **MXInterface**, the orchestration platform that turns that same cobot into a multi-machine production asset.
+
+| | DIO Tender | MXInterface |
+|---|---|---|
+| Best for | Getting your first cell running fast | Scaling to a full production floor |
+| Machines per robot | One machine, dual-gripper and dual-vise cycle | Three or more CNC machines tended by one cobot |
+| Coordination | Cycle Complete handshake and a ready-made sequence | Dispatches work across machines, so the robot is never waiting on one |
+| Machine interface | Digital I/O or Modbus signals | MTConnect-native (Part 5 interfaces), with agent and device adapters included |
+| Work definition | Pick, Wait, Swap, Place template | Abstract task model: any repeatable robot operation becomes a dispatchable task |
+| Data and visibility | Handshake signals | REST/HTTP data layer that plugs into dashboards, historians and MES |
+| Adding a machine | New program and wiring | Add it to the hub. Each added machine costs a fraction of the first |
+| Planning | Commission on the real cell | Free NVIDIA Isaac Sim digital twin of your workcell before you buy |
+
+### Why move up
+
+A cobot tending a single machine typically sits idle most of the time, since industry figures put 1:1 utilization below 35%. MXInterface is built to push that above 85% by orchestrating several machines from one robot. For example, three Haas VF-2 machines with 12-minute cycles and one UR10e at an $85/hour burden rate yield over 320 extra machine-hours a year, worth more than $27,000, against a $5,500 per-robot software license.
+
+MXInterface runs on open standards (MTConnect and REST/HTTP). It needs no proprietary hardware, no custom PLC per machine pairing, and no systems integrator on retainer. It deploys in days. Schweitzer Engineering runs a TRAK VMC2 with a UR12 unattended on the MXInterface M21/Indexer handshake, with IO for door and chuck control, at $10,675 all in.
+
+**Ready to put your cobot to work on more than one machine?** Request a free simulation of your workcell at [mxinterface.com](https://mxinterface.com).
+
 ## Features
 
 - **Ready-made cycle**: Pick Raw → Wait for M21 → Tend Swap (Unload, Load) → Place Finished, repeated forever.
@@ -89,7 +114,7 @@ Choose the vise, **Open** or **Close**, and a **Dwell** time (default 1.0 s, max
 
 DIO Tender only uses **standard (non-safety) digital I/O and Modbus signals**. The Door Opened / Door Closed feedback, Door Output and Cycle handshake are **not safety functions** and must not be relied on to protect people. Wire machine and cell safety separately through the robot's safety I/O.
 
-References: UR5e User Manual (SW 5.26) section 8.6 *Safety I/O*, and PolyScope e-Series Software Handbook (SW 5.26) section 2.7 *Safety I/O* (the handbook's 2.6 *Software Safety Limits* and 2.8 *Software Safety Restrictions* cover limits and safety planes).
+References: [UR5e User Manual (SW 5.26)](https://www.universal-robots.com/manuals/EN/PDF/SW5_26/user-manual-UR5e-PDF_online/710-965-00_UR5e_User_Manual_en_Global.pdf) section 8.6 *Safety I/O*, and [PolyScope e-Series Software Handbook (SW 5.26)](https://www.universal-robots.com/manuals/EN/PDF/SW5_26/Poly5_handbook_online/e-Series_Software_Handbook_en_Global.pdf) section 2.7 *Safety I/O* (the handbook's 2.6 *Software Safety Limits* and 2.8 *Software Safety Restrictions* cover limits and safety planes).
 
 ### Key points
 
