@@ -1,0 +1,14 @@
+# PDF build config: inherits the site config and adds a single combined print page.
+# Usage: ./scripts/build-pdf.sh  ->  DIO_Tender_Docs.pdf
+INHERIT: mkdocs.yml
+site_dir: build/pdf-site
+
+plugins:
+  - search
+  - print-site:
+      add_to_navigation: false
+      add_cover_page: true
+      add_table_of_contents: true
+      toc_depth: 3
+      enumerate_headings: false
+      add_print_site_banner: false
